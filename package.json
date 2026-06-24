@@ -1,0 +1,8 @@
+{
+  "name": "actioncable",
+  "type": "module",
+  "scripts": {
+    "build": "bun run bun.config.js"
+  },
+  "dependencies": {}
+}
