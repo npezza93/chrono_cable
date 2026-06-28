@@ -243,7 +243,7 @@ Connection.prototype.events = {
     if (!this.isProtocolSupported()) {
       return;
     }
-    const { identifier, id, ids, message, reason, reconnect, stream_name, type } = JSON.parse(event.data);
+    const { identifier, ids, message, reason, reconnect, type, broadcasting, id } = JSON.parse(event.data);
     this.monitor.recordMessage();
     switch (type) {
       case message_types.welcome:
@@ -255,27 +255,22 @@ Connection.prototype.events = {
       case message_types.disconnect:
         logger_default.log(`Disconnecting. Reason: ${reason}`);
         return this.close({ allowReconnect: reconnect });
+      case message_types.history:
+        return this.subscriptions.ingestHistory(identifier, broadcasting, message);
       case message_types.ping:
         return null;
-      case message_types.history:
-        this.subscriptions.ingestHistory(identifier, message);
-        return this.subscriptions.notify(identifier, "history", message);
       case message_types.confirmation:
         this.subscriptions.confirmSubscription(identifier, ids);
-        const connected = {};
-        if (ids != null) {
-          connected.ids = ids;
-        }
         if (this.reconnectAttempted) {
           this.reconnectAttempted = false;
-          return this.subscriptions.notify(identifier, "connected", { ...connected, reconnected: true });
+          return this.subscriptions.notify(identifier, "connected", { reconnected: true });
         } else {
-          return this.subscriptions.notify(identifier, "connected", { ...connected, reconnected: false });
+          return this.subscriptions.notify(identifier, "connected", { reconnected: false });
         }
       case message_types.rejection:
         return this.subscriptions.reject(identifier);
       default:
-        return this.subscriptions.receive(identifier, message, { id, stream_name });
+        return this.subscriptions.receive(identifier, message, id, broadcasting);
     }
   },
   open() {
@@ -301,6 +296,61 @@ Connection.prototype.events = {
 };
 var connection_default = Connection;
 
+// app/javascript/action_cable/stream.js
+class Stream {
+  constructor(subscription, broadcasting, id) {
+    this.subscription = subscription;
+    this.broadcasting = broadcasting;
+    this.id = id;
+    this.recovering = false;
+    this.queue = [];
+  }
+  increment(id) {
+    this.id = id;
+  }
+  messageWasProcessed(id) {
+    return this.id != null && id <= this.id;
+  }
+  messageIsProcessable(id) {
+    return this.id == null || id === this.id + 1;
+  }
+  caughtUp() {
+    this.recovering = false;
+  }
+  recover(subscriptions, id, message) {
+    this.queue.push({ id, message });
+    if (!this.recovering) {
+      this.recovering = true;
+      subscriptions.sendCommand(this.subscription, "history", { broadcasting: this.broadcasting, id: this.id });
+    }
+  }
+  processMessage(id, payload, callback) {
+    if (this.messageWasProcessed(id))
+      return true;
+    if (this.messageIsProcessable(id)) {
+      this.increment(id);
+      callback(payload);
+      return true;
+    } else {
+      return false;
+    }
+  }
+  processMessages(messages, callback) {
+    messages.sort((a, b) => a.id - b.id).forEach(({ id, payload }) => {
+      this.processMessage(id, JSON.parse(payload), callback);
+    });
+    this.caughtUp();
+    this.processQueue(callback);
+    return this.subscription;
+  }
+  processQueue(callback) {
+    this.queue.sort((a, b) => a.id - b.id).filter(({ id }) => id > this.id).forEach(({ id, message }) => {
+      this.processMessage(id, message, callback);
+    });
+    this.queue = [];
+  }
+}
+
 // app/javascript/action_cable/subscription.js
 var extend = function(object, properties) {
   if (properties != null) {
@@ -316,7 +366,6 @@ class Subscription {
   constructor(consumer, params = {}, mixin) {
     this.consumer = consumer;
     this.identifier = JSON.stringify(params);
-    this.ids = {};
     this.streams = {};
     extend(this, mixin);
   }
@@ -329,6 +378,15 @@ class Subscription {
   }
   unsubscribe() {
     return this.consumer.subscriptions.remove(this);
+  }
+  reset() {
+    this.streams = {};
+  }
+  findOrCreateStream(broadcasting, id = null) {
+    if (this.streams[broadcasting] == null) {
+      this.streams[broadcasting] = new Stream(this, broadcasting, id);
+    }
+    return this.streams[broadcasting];
   }
 }
 
@@ -392,7 +450,6 @@ class Subscriptions {
     return subscription;
   }
   remove(subscription) {
-    this.reset(subscription);
     this.forget(subscription);
     if (!this.findAll(subscription.identifier).length) {
       this.sendCommand(subscription, "unsubscribe");
@@ -408,12 +465,9 @@ class Subscriptions {
   }
   forget(subscription) {
     this.guarantor.forget(subscription);
+    subscription.reset();
     this.subscriptions = this.subscriptions.filter((s) => s !== subscription);
     return subscription;
-  }
-  reset(subscription) {
-    subscription.ids = {};
-    subscription.streams = {};
   }
   findAll(identifier) {
     return this.subscriptions.filter((s) => s.identifier === identifier);
@@ -433,111 +487,51 @@ class Subscriptions {
     }
     return subscriptions.map((subscription2) => typeof subscription2[callbackName] === "function" ? subscription2[callbackName](...args) : undefined);
   }
-  receive(identifier, message, { id, stream_name: streamName } = {}) {
-    if (id == null || streamName == null) {
-      return this.notify(identifier, "received", message);
-    }
-    return this.findAll(identifier).map((subscription) => {
-      const previousId = subscription.ids[streamName];
-      if (previousId != null && id <= previousId) {
-        return;
-      }
-      if (previousId == null || id === previousId + 1) {
-        return this.deliver(subscription, streamName, id, message);
-      }
-      this.stream(subscription, streamName).pending[id] = message;
-      return this.recover(subscription, streamName);
-    });
-  }
-  ingestHistory(identifier, { broadcasting: streamName, messages = [], last_id: lastId }) {
-    return this.findAll(identifier).map((subscription) => {
-      for (const { id, payload } of messages) {
-        const previousId = subscription.ids[streamName];
-        if (previousId != null && id <= previousId) {
-          continue;
-        }
-        this.deliver(subscription, streamName, id, this.decodeHistoryPayload(payload));
-      }
-      if (subscription.ids[streamName] == null && lastId != null) {
-        subscription.ids[streamName] = lastId;
-      }
-      this.stream(subscription, streamName).recovering = false;
-      this.discardStalePendingMessages(subscription, streamName);
-      this.drainPendingMessages(subscription, streamName);
-      return subscription;
-    });
-  }
-  deliver(subscription, streamName, id, message) {
-    subscription.ids[streamName] = id;
-    return this.notify(subscription, "received", message, { id, inSequence: true, stream_name: streamName });
-  }
-  recover(subscription, streamName) {
-    const stream = this.stream(subscription, streamName);
-    if (!stream.recovering) {
-      stream.recovering = true;
-      this.requestHistory(subscription, streamName);
-    }
-  }
-  drainPendingMessages(subscription, streamName) {
-    const pending = this.stream(subscription, streamName).pending;
-    let nextId = subscription.ids[streamName] + 1;
-    while (this.hasPendingMessage(pending, nextId)) {
-      const message = pending[nextId];
-      delete pending[nextId];
-      this.deliver(subscription, streamName, nextId, message);
-      nextId++;
-    }
-  }
-  discardStalePendingMessages(subscription, streamName) {
-    const pending = this.stream(subscription, streamName).pending;
-    const previousId = subscription.ids[streamName];
-    for (const id in pending) {
-      if (id <= previousId) {
-        delete pending[id];
-      }
-    }
-  }
-  stream(subscription, streamName) {
-    if (!subscription.streams[streamName]) {
-      subscription.streams[streamName] = { pending: {}, recovering: false };
-    }
-    return subscription.streams[streamName];
-  }
-  hasPendingMessage(pending, id) {
-    return Object.prototype.hasOwnProperty.call(pending, id);
-  }
-  decodeHistoryPayload(payload) {
-    try {
-      return JSON.parse(payload);
-    } catch {
-      return payload;
-    }
-  }
   subscribe(subscription) {
-    if (this.sendCommand(subscription, "subscribe", { history: { ids: subscription.ids } })) {
+    if (this.sendCommand(subscription, "subscribe")) {
       this.guarantor.guarantee(subscription);
     }
   }
-  requestHistory(subscription, streamName) {
-    const ids = streamName == null ? subscription.ids : { [streamName]: subscription.ids[streamName] };
-    this.sendCommand(subscription, "__ac_history", { history: { ids } });
-  }
   confirmSubscription(identifier, ids) {
     logger_default.log(`Subscription confirmed ${identifier}`);
-    if (ids != null) {
-      this.findAll(identifier).forEach((subscription) => {
-        for (const key in ids) {
-          if (subscription.ids[key] == null) {
-            subscription.ids[key] = ids[key];
-          }
-        }
-      });
-    }
-    this.findAll(identifier).map((subscription) => this.guarantor.forget(subscription));
+    this.findAll(identifier).map((subscription) => {
+      if (ids != null) {
+        Object.entries(ids).forEach(([broadcasting, id]) => {
+          subscription.findOrCreateStream(broadcasting, id);
+        });
+      }
+      this.guarantor.forget(subscription);
+    });
   }
   sendCommand(subscription, command, data = {}) {
     const { identifier } = subscription;
     return this.consumer.send({ command, identifier, ...data });
+  }
+  receive(identifier, message, id, broadcasting) {
+    if (id == null || broadcasting == null) {
+      return this.notify(identifier, "received", message);
+    } else {
+      return this.findAll(identifier).map((subscription) => {
+        const stream = subscription.findOrCreateStream(broadcasting);
+        const processed = stream.processMessage(id, message, (message2) => {
+          this.notify(identifier, "received", message2);
+        });
+        if (processed) {
+          return subscription;
+        } else {
+          return stream.recover(this, id, message);
+        }
+      });
+    }
+  }
+  ingestHistory(identifier, broadcasting, { messages = [] }) {
+    return this.findAll(identifier).map((subscription) => {
+      const stream = subscription.streams[broadcasting];
+      stream.processMessages(messages, (message) => {
+        this.notify(identifier, "received", message);
+      });
+      return subscription;
+    });
   }
 }
 

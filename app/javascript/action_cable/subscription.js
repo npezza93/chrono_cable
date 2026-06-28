@@ -1,3 +1,5 @@
+import Stream from "./stream"
+
 // A new subscription is created through the ActionCable.Subscriptions instance available on the consumer.
 // It provides a number of callbacks and a method for calling remote procedure calls on the corresponding
 // Channel instance on the server side.
@@ -70,6 +72,7 @@ export default class Subscription {
   constructor(consumer, params = {}, mixin) {
     this.consumer = consumer
     this.identifier = JSON.stringify(params)
+    this.streams = {}
     extend(this, mixin)
   }
 
@@ -85,5 +88,16 @@ export default class Subscription {
 
   unsubscribe() {
     return this.consumer.subscriptions.remove(this)
+  }
+
+  reset() {
+    this.streams = {}
+  }
+
+  findOrCreateStream(broadcasting, id = null) {
+    if (this.streams[broadcasting] == null) {
+      this.streams[broadcasting] = new Stream(this, broadcasting, id)
+    }
+    return this.streams[broadcasting]
   }
 }

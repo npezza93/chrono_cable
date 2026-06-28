@@ -21,7 +21,7 @@ module ChronoCable::ChannelBase
           connection.transmit **{ identifier: @identifier,
             type: ActionCable::INTERNAL[:message_types][:confirmation],
             ids: @subscription_confirmation_ids
-          }
+          }.compact
           @subscription_confirmation_sent = true
         end
       end

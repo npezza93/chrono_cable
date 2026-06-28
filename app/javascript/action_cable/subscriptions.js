@@ -54,6 +54,7 @@ export default class Subscriptions {
 
   forget(subscription) {
     this.guarantor.forget(subscription)
+    subscription.reset()
     this.subscriptions = (this.subscriptions.filter((s) => s !== subscription))
     return subscription
   }
@@ -90,14 +91,52 @@ export default class Subscriptions {
     }
   }
 
-  confirmSubscription(identifier) {
+  confirmSubscription(identifier, ids) {
     logger.log(`Subscription confirmed ${identifier}`)
-    this.findAll(identifier).map((subscription) =>
-      this.guarantor.forget(subscription))
+    this.findAll(identifier).map((subscription) => {
+      if (ids != null) {
+        Object.entries(ids).forEach(([broadcasting, id]) => {
+          subscription.findOrCreateStream(broadcasting, id)
+        })
+      }
+      this.guarantor.forget(subscription)
+    })
   }
 
-  sendCommand(subscription, command) {
+  sendCommand(subscription, command, data = {}) {
     const {identifier} = subscription
-    return this.consumer.send({command, identifier})
+    return this.consumer.send({command, identifier, ...data})
+  }
+
+  receive(identifier, message, id, broadcasting) {
+    if (id == null || broadcasting == null) {
+      return this.notify(identifier, "received", message)
+    } else {
+      return this.findAll(identifier).map((subscription) => {
+        const stream = subscription.findOrCreateStream(broadcasting)
+
+        const processed = stream.processMessage(id, message, (message) => {
+          this.notify(identifier, "received", message)
+        })
+
+        if (processed) {
+          return subscription
+        } else {
+          return stream.recover(this, id, message)
+        }
+      })
+    }
+  }
+
+  ingestHistory(identifier, broadcasting, {messages = []}) {
+    return this.findAll(identifier).map((subscription) => {
+      const stream = subscription.streams[broadcasting]
+
+      stream.processMessages(messages, (message) => {
+        this.notify(identifier, "received", message)
+      })
+
+      return subscription
+    })
   }
 }

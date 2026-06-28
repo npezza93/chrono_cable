@@ -3,6 +3,7 @@ export default {
     "welcome": "welcome",
     "disconnect": "disconnect",
     "ping": "ping",
+    "history": "history",
     "confirmation": "confirm_subscription",
     "rejection": "reject_subscription"
   },

@@ -69,4 +69,14 @@ module ChronoCable::ChannelStreams
       transmit handler.(message), via: via, id: message.try(:id), broadcasting:
     end
   end
+
+  def __history(data = nil)
+    broadcasting = data.to_h["broadcasting"]
+    if pubsub.supports_history? && streams[broadcasting]
+      message = { messages: pubsub.history(broadcasting, after_id: data["id"]) }
+
+      connection.transmit identifier: @identifier, broadcasting:,
+        type: ActionCable::INTERNAL[:message_types][:history], message: message
+    end
+  end
 end

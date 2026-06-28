@@ -1,7 +1,7 @@
 await Bun.build({
   entrypoints: ['./app/javascript/action_cable/index.js'],
   outdir: './app/assets/javascripts/',
-  naming: "actioncable.[ext]",
+  naming: "chronocable.[ext]",
   target: 'browser',
   format: "esm",
 })
