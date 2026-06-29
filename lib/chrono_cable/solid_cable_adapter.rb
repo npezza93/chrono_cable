@@ -7,7 +7,9 @@ module ChronoCable::SolidCableAdapter
     channel = channel_with_prefix(channel)
     messages = ::SolidCable::Message.
       where(channel_hash: ::SolidCable::Message.channel_hash_for(channel))
-    messages = messages.where(id: (after_id.to_i + 1)..) if after_id
-    messages.order(:channel_id).as_json(only: [:channel_id, :payload])
+    messages = messages.where(channel_id: (after_id.to_i + 1)..) if after_id
+    messages.order(:channel_id).map do |message|
+      { id: message.channel_id, payload: message.payload }
+    end
   end
 end

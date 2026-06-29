@@ -5,7 +5,9 @@ module ChronoCable::SolidCableAdapterListener
   end
 
   def current_channel_id(channel)
-    channels[channel]
+    SolidCable::Channel.find_by(
+      channel_hash: SolidCable::Message.channel_hash_for(channel)
+    )&.current_id.to_i
   end
 
   def broadcast_messages
