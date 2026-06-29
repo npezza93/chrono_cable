@@ -72,7 +72,10 @@ module ChronoCable::ChannelStreams
   def __history(data = nil)
     broadcasting = data.to_h["broadcasting"]
     if pubsub.supports_history? && streams[broadcasting]
-      message = { messages: pubsub.history(broadcasting, after_id: data["id"]) }
+      message = {
+        messages: pubsub.history(broadcasting, after_id: data["id"]),
+        earliest_id: pubsub.earliest_id(broadcasting)
+      }
 
       connection.transmit identifier: @identifier, broadcasting:,
         type: ActionCable::INTERNAL[:message_types][:history], message: message

@@ -19,18 +19,36 @@ export default class Stream {
     return this.id == null || id === this.id + 1
   }
 
+  isBehind(id) {
+    return this.id != null && this.id < id
+  }
+
+  jumpToEarliestAvailableId(earliestId) {
+    if (this.id != null && earliestId != null && earliestId > this.id + 1) {
+      this.id = earliestId - 1
+    }
+  }
+
   caughtUp() {
     this.recovering = false
   }
 
   recover(subscriptions, id, message) {
     this.queue.push({id, message})
+    this.requestHistory(subscriptions)
+  }
 
+  requestHistory(subscriptions) {
     if (!this.recovering) {
       this.recovering = true
       subscriptions.sendCommand(this.subscription, "history",
         {broadcasting: this.broadcasting, id: this.id})
     }
+  }
+
+  restartRecovery(subscriptions) {
+    this.recovering = false
+    this.requestHistory(subscriptions)
   }
 
   processMessage(id, payload, callback) {
@@ -45,7 +63,9 @@ export default class Stream {
     }
   }
 
-  processMessages(messages, callback) {
+  processMessages(messages, callback, earliestId) {
+    this.jumpToEarliestAvailableId(earliestId)
+
     messages
       .sort((a, b) => a.id - b.id)
       .forEach(({ id, payload }) => {

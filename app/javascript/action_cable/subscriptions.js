@@ -96,7 +96,11 @@ export default class Subscriptions {
     this.findAll(identifier).map((subscription) => {
       if (ids != null) {
         Object.entries(ids).forEach(([broadcasting, id]) => {
-          subscription.findOrCreateStream(broadcasting, id)
+          const stream = subscription.findOrCreateStream(broadcasting, id)
+
+          if (stream.isBehind(id)) {
+            stream.restartRecovery(this)
+          }
         })
       }
       this.guarantor.forget(subscription)
@@ -128,13 +132,13 @@ export default class Subscriptions {
     }
   }
 
-  ingestHistory(identifier, broadcasting, {messages = []}) {
+  ingestHistory(identifier, broadcasting, {messages = [], earliest_id}) {
     return this.findAll(identifier).map((subscription) => {
-      const stream = subscription.streams[broadcasting]
+      const stream = subscription.findOrCreateStream(broadcasting)
 
       stream.processMessages(messages, (message) => {
         this.notify(identifier, "received", message)
-      })
+      }, earliest_id)
 
       return subscription
     })

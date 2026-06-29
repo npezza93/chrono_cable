@@ -12,4 +12,12 @@ module ChronoCable::SolidCableAdapter
       { id: message.channel_id, payload: message.payload }
     end
   end
+
+  def earliest_id(channel)
+    channel = channel_with_prefix(channel)
+
+    ::SolidCable::Message.
+      where(channel_hash: ::SolidCable::Message.channel_hash_for(channel)).
+      minimum(:channel_id)
+  end
 end

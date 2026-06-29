@@ -1,7 +1,7 @@
 module ChronoCable::SolidCableAdapterListener
   def add_channel(channel, on_success)
     channels[channel] = last_id = last_message_id
-    on_success.call(last_id) if on_success
+    on_success.call(current_channel_id(channel)) if on_success
   end
 
   def current_channel_id(channel)

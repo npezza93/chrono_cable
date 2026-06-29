@@ -6,4 +6,7 @@ module ChronoCable::SubscriptionAdapterBaseExtensions
   def history(channel, after_id: nil)
     raise NotImplementedError
   end
+
+  def earliest_id(channel)
+  end
 end
