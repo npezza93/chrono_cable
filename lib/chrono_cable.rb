@@ -28,6 +28,6 @@ module ChronoCable
     ::ActionCable::SubscriptionAdapter::SolidCable.include ChronoCable::SolidCableAdapter
 
 
-    SolidCable::Message.include ::ChronoCable::SolidCableMessage
+    SolidCable::Message.prepend ::ChronoCable::SolidCableMessage
   end
 end
