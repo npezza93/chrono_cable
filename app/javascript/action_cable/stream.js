@@ -59,13 +59,15 @@ export default class Stream {
   }
 
   processQueue(callback) {
+    const remaining = []
+
     this.queue
       .sort((a, b) => a.id - b.id)
       .filter(({id}) => id > this.id)
       .forEach(({ id, message }) => {
-        this.processMessage(id, message, callback)
+        if (!this.processMessage(id, message, callback)) remaining.push({id, message})
       })
 
-    this.queue = []
+    this.queue = remaining
   }
 }
