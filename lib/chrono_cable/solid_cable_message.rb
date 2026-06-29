@@ -1,5 +1,5 @@
 module ChronoCable::SolidCableMessage
-  class << self
+  module Broadcasting
     def broadcast(channel, payload)
       channel_hash = channel_hash_for(channel)
 
