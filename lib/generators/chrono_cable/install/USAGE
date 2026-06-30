@@ -1,0 +1,9 @@
+Description:
+    Copies the Chrono Cable database migrations into the application.
+
+Example:
+    bin/rails generate chrono_cable:install
+
+    This will create:
+        db/migrate/*_create_solid_cable_channels.rb
+        db/migrate/*_add_channel_id_to_solid_cable_messages.rb

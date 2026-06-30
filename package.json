@@ -4,5 +4,7 @@
   "scripts": {
     "build": "bun run bun.config.js"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@hotwired/turbo": "^8.0.23"
+  }
 }
