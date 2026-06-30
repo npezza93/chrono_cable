@@ -23,6 +23,7 @@ module ChronoCable::ChannelStreams
 
       record_subscription_confirmation_id broadcasting, last_id if history_stream?(broadcasting) && pubsub.supports_history?
       ensure_confirmation_sent
+      transmit_subscription_id broadcasting, last_id if confirmation_was_sent
 
       logger.info "#{self.class.name} is streaming from #{broadcasting}"
     end)
@@ -72,13 +73,25 @@ module ChronoCable::ChannelStreams
   def __history(data = nil)
     broadcasting = data.to_h["broadcasting"]
     if pubsub.supports_history? && streams[broadcasting]
-      message = {
-        messages: pubsub.history(broadcasting, after_id: data["id"]),
-        earliest_id: pubsub.earliest_id(broadcasting)
-      }
-
-      connection.transmit identifier: @identifier, broadcasting:,
-        type: ActionCable::INTERNAL[:message_types][:history], message: message
+      transmit_history pubsub.history(broadcasting, after_id: data["id"]),
+        broadcasting:
     end
+  end
+
+  def transmit_subscription_id(broadcasting, id)
+    return unless history_stream?(broadcasting) && pubsub.supports_history? && id
+
+    transmit_history [], broadcasting:, id:
+  end
+
+  def transmit_history(messages, broadcasting:, id: nil)
+    message = {
+      messages:,
+      earliest_id: pubsub.earliest_id(broadcasting),
+      id:
+    }.compact
+
+    connection.transmit identifier: @identifier, broadcasting:,
+      type: ActionCable::INTERNAL[:message_types][:history], message: message
   end
 end

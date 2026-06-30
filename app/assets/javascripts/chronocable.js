@@ -545,9 +545,9 @@ class Subscriptions {
       });
     }
   }
-  ingestHistory(identifier, broadcasting, { messages = [], earliest_id }) {
+  ingestHistory(identifier, broadcasting, { messages = [], earliest_id, id }) {
     return this.findAll(identifier).map((subscription) => {
-      const stream = subscription.findOrCreateStream(broadcasting);
+      const stream = subscription.findOrCreateStream(broadcasting, id);
       stream.processMessages(messages, (message) => {
         this.notify(identifier, "received", message);
       }, earliest_id);
