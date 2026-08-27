@@ -12,6 +12,7 @@ require "chrono_cable/channel_streams"
 require "chrono_cable/solid_cable_message"
 require "chrono_cable/solid_cable_adapter_listener"
 require "chrono_cable/solid_cable_adapter"
+require "chrono_cable/solid_cable_broadcasting"
 
 module ChronoCable
   def self.install!
@@ -28,7 +29,8 @@ module ChronoCable
     ::ActionCable::SubscriptionAdapter::SolidCable.include ChronoCable::SolidCableAdapter
 
 
-    SolidCable::Message.singleton_class.prepend ::ChronoCable::SolidCableMessage::Broadcasting
+    SolidCable::BatchedBroadcaster.prepend ::ChronoCable::SolidCableBroadcasting
+    SolidCable::Message.singleton_class.prepend ::ChronoCable::SolidCableMessage::BroadcastingClassMethods
     SolidCable::Message.prepend ::ChronoCable::SolidCableMessage
   end
 end

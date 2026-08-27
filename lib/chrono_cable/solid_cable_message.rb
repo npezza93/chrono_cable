@@ -1,17 +1,11 @@
 module ChronoCable::SolidCableMessage
-  module Broadcasting
-    def broadcast(channel, payload)
-      channel_hash = channel_hash_for(channel)
-
-      transaction do
-        channel_record = SolidCable::Channel.create_or_find_by!(channel_hash:)
-        channel_record.with_lock do
-          channel_record.increment!(:current_id)
-
-          insert({ created_at: Time.current, channel:, payload:, channel_hash:,
-            channel_id: channel_record.current_id })
-        end
-      end
+  module BroadcastingClassMethods
+    def broadcast_batch(broadcasts)
+      created_at = Time.current
+      insert_all broadcasts.map { |message|
+        { created_at:, channel: message.channel, channel_id: message.channel_id,
+          payload: message.payload, channel_hash: channel_hash_for(message.channel) }
+      }
     end
   end
 
