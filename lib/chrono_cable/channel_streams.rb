@@ -13,9 +13,7 @@ module ChronoCable::ChannelStreams
     handler = worker_pool_stream_handler(broadcasting, user_handler, coder: coder)
     streams[broadcasting] = handler
     if user_handler
-      history_streams.delete(broadcasting)
-    else
-      history_streams[broadcasting] = true
+      history_streams[broadcasting] = stream_handler(broadcasting, user_handler, coder:)
     end
 
     pubsub.subscribe(broadcasting, handler, lambda do |last_id = nil|
@@ -86,8 +84,23 @@ module ChronoCable::ChannelStreams
 
       broadcasting = String(broadcasting)
       if pubsub.supports_history? && history_stream?(broadcasting)
-        transmit_history pubsub.history(broadcasting, after_id: data["id"]),
-          broadcasting:
+        messages = pubsub.history(broadcasting, after_id: data["id"])
+        history_handler = history_streams[broadcasting]
+
+        if history_handler
+          replay_history messages, with: history_handler
+          transmit_history [], broadcasting:
+        else
+          transmit_history messages, broadcasting:
+        end
+      end
+    end
+
+    def replay_history(messages, with:)
+      messages.each do |message|
+        with.call ActionCable::SubscriptionAdapter::Message.new(
+          id: message[:id], payload: message[:payload]
+        )
       end
     end
 

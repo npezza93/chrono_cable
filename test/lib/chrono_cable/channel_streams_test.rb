@@ -116,21 +116,32 @@ class ChronoCable::ChannelStreamsTest < ActiveSupport::TestCase
     assert_equal 1, connection.transmissions.size
   end
 
-  test "custom stream callbacks receive payloads and do not expose history" do
+  test "custom stream callbacks receive live and historical payloads" do
     channel, connection, pubsub = subscribe
-    received = nil
-    channel.stream_from("custom", ->(message) { received = message }, coder: ActiveSupport::JSON)
+    received = []
+    channel.stream_from("custom", ->(message) { received << message }, coder: ActiveSupport::JSON)
     connection.transmissions.clear
 
     pubsub.publish "custom", ActionCable::SubscriptionAdapter::Message.new(
       id: 9,
       payload: ActiveSupport::JSON.encode(body: "custom")
     )
-    channel.__send__(:__history, "broadcasting" => "custom", "id" => 8)
+    pubsub.history_messages = [
+      { id: 10, payload: ActiveSupport::JSON.encode(body: "historical") }
+    ]
+    channel.__send__(:__history, "broadcasting" => "custom", "id" => 9)
 
-    assert_equal({ "body" => "custom" }, received)
-    assert_empty connection.transmissions
-    assert_empty pubsub.history_requests
+    assert_equal [
+      { "body" => "custom" },
+      { "body" => "historical" }
+    ], received
+    assert_equal [ [ "custom", 9 ] ], pubsub.history_requests
+    assert_equal({
+      identifier: identifier,
+      broadcasting: "custom",
+      type: ActionCable::INTERNAL[:message_types][:history],
+      message: { messages: [] }
+    }, connection.transmissions.last)
   end
 
   test "a stream added after confirmation receives its own starting id" do
