@@ -29,69 +29,74 @@ module ChronoCable::ChannelStreams
     end)
   end
 
-  def history_streams
-    @history_streams ||= {}
-  end
-
   def stop_all_streams
     super
     history_streams.clear
   end
 
   def stop_stream_from(broadcasting)
+    broadcasting = String(broadcasting)
     super
     history_streams.delete(broadcasting)
   end
 
-  def history_stream?(broadcasting)
-    history_streams.key?(broadcasting)
-  end
-
-  def record_subscription_confirmation_id(broadcasting, id)
-    return if id.nil?
-
-    @subscription_confirmation_ids ||= {}
-    @subscription_confirmation_ids[broadcasting] = id
-  end
-
-  def stream_decoder(handler = identity_handler, coder:)
-    if coder
-      ->(message) { handler.(coder.decode(message.try(:payload) || message)) }
-    else
-      ->(message) { handler.(message.try(:payload) || message) }
+  private
+    def stream_decoder(handler = identity_handler, coder:)
+      if coder
+        ->(message) { handler.(coder.decode(message.try(:payload) || message)) }
+      else
+        ->(message) { handler.(message.try(:payload) || message) }
+      end
     end
-  end
 
-  def stream_transmitter(handler = identity_handler, broadcasting:)
-    via = "streamed from #{broadcasting}"
+    def stream_transmitter(handler = identity_handler, broadcasting:)
+      via = "streamed from #{broadcasting}"
 
-    ->(message) do
-      transmit handler.(message), via: via, id: message.try(:id), broadcasting:
+      ->(message) do
+        transmit handler.(message), via: via, id: message.try(:id), broadcasting:
+      end
     end
-  end
 
-  def __history(data = nil)
-    broadcasting = data.to_h["broadcasting"]
-    if pubsub.supports_history? && streams[broadcasting]
-      transmit_history pubsub.history(broadcasting, after_id: data["id"]),
-        broadcasting:
+    def history_streams
+      @history_streams ||= {}
     end
-  end
 
-  def transmit_subscription_id(broadcasting, id)
-    return unless history_stream?(broadcasting) && pubsub.supports_history? && id
+    def history_stream?(broadcasting)
+      history_streams.key?(broadcasting)
+    end
 
-    transmit_history [], broadcasting:, id:
-  end
+    def record_subscription_confirmation_id(broadcasting, id)
+      return if id.nil?
 
-  def transmit_history(messages, broadcasting:, id: nil)
-    message = {
-      messages:,
-      earliest_id: pubsub.earliest_id(broadcasting),
-      id:
-    }.compact
+      @subscription_confirmation_ids ||= {}
+      @subscription_confirmation_ids[broadcasting] = id
+    end
 
-    connection.transmit identifier: @identifier, broadcasting:,
-      type: ActionCable::INTERNAL[:message_types][:history], message: message
-  end
+    def __history(data = nil)
+      broadcasting = data.to_h["broadcasting"]
+      return unless broadcasting
+
+      broadcasting = String(broadcasting)
+      if pubsub.supports_history? && history_stream?(broadcasting)
+        transmit_history pubsub.history(broadcasting, after_id: data["id"]),
+          broadcasting:
+      end
+    end
+
+    def transmit_subscription_id(broadcasting, id)
+      return unless history_stream?(broadcasting) && pubsub.supports_history? && id
+
+      transmit_history [], broadcasting:, id:
+    end
+
+    def transmit_history(messages, broadcasting:, id: nil)
+      message = {
+        messages:,
+        earliest_id: pubsub.earliest_id(broadcasting),
+        id:
+      }.compact
+
+      connection.transmit identifier: @identifier, broadcasting:,
+        type: ActionCable::INTERNAL[:message_types][:history], message: message
+    end
 end

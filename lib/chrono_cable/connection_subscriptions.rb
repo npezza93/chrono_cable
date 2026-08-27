@@ -10,6 +10,6 @@ module ChronoCable::ConnectionSubscriptions
   def fetch_history(data)
     subscription = find(data)
     raise UnknownSubscription.new(data["identifier"]) unless subscription
-    subscription.__history(data)
+    subscription.__send__(:__history, data)
   end
 end
