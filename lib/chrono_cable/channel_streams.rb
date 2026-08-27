@@ -41,19 +41,27 @@ module ChronoCable::ChannelStreams
   end
 
   private
-    def stream_decoder(handler = identity_handler, coder:)
-      if coder
-        ->(message) { handler.(coder.decode(message.try(:payload) || message)) }
-      else
-        ->(message) { handler.(message.try(:payload) || message) }
+    def stream_decoder(handler = nil, coder:)
+      ->(message) do
+        payload = message.try(:payload) || message
+        payload = coder.decode(payload) if coder
+
+        handler ? handler.(payload) : payload
       end
     end
 
-    def stream_transmitter(handler = identity_handler, broadcasting:)
+    def stream_transmitter(handler = nil, broadcasting:)
       via = "streamed from #{broadcasting}"
 
       ->(message) do
-        transmit handler.(message), via: via, id: message.try(:id), broadcasting:
+        data =
+          if handler
+            handler.(message)
+          else
+            message
+          end
+
+        transmit data, via: via, id: message.try(:id), broadcasting:
       end
     end
 

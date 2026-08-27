@@ -10,9 +10,9 @@ module ChronoCable::SolidCableAdapterListener
 
   private
     def current_channel_id(channel)
-      SolidCable::Channel.find_by(
-        channel_hash: SolidCable::Message.channel_hash_for(channel)
-      )&.current_id.to_i
+      SolidCable::Message.
+        where(channel_hash: SolidCable::Message.channel_hash_for(channel)).
+        maximum(:channel_id).to_i
     end
 
     def broadcast(message)
