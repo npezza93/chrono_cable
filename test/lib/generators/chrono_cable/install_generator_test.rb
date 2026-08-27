@@ -1,5 +1,5 @@
 require "test_helper"
-require "generators/install/install_generator"
+require "generators/chrono_cable/install/install_generator"
 
 module ChronoCable
   class InstallGeneratorTest < Rails::Generators::TestCase
@@ -27,7 +27,7 @@ module ChronoCable
       run_generator
 
       assert_file "config/importmap.rb",
-        %(pin "@rails/actioncable", to: "chronocable.js"\npin "@hotwired/turbo-rails", to: "chrono_turbo.min.js"\n)
+        %(pin "@rails/actioncable", to: "chronocable.js"\npin "@hotwired/turbo-rails", to: "chronocable_turbo.min.js"\n)
     end
   end
 end
