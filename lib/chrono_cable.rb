@@ -7,6 +7,7 @@ require "chrono_cable/subscription_adapter_base_extensions"
 require "chrono_cable/connection_subscriptions"
 require "chrono_cable/channel_base"
 require "chrono_cable/channel_streams"
+require "chrono_cable/turbo_streams_channel"
 
 require "chrono_cable/solid_cable_message"
 require "chrono_cable/solid_cable_adapter_listener"
@@ -22,6 +23,7 @@ module ChronoCable
     ::ActionCable::Connection::Subscriptions.prepend ChronoCable::ConnectionSubscriptions
     ::ActionCable::Channel::Base.prepend ChronoCable::ChannelBase
     ::ActionCable::Channel::Streams.prepend ChronoCable::ChannelStreams
+    ::Turbo::StreamsChannel.prepend ChronoCable::TurboStreamsChannel if defined?(::Turbo::StreamsChannel)
 
     ::ActionCable::SubscriptionAdapter::SolidCable::Listener.prepend ::ChronoCable::SolidCableAdapterListener
     ::ActionCable::SubscriptionAdapter::SolidCable.include ChronoCable::SolidCableAdapter

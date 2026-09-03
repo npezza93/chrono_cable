@@ -35,6 +35,13 @@ subscribing:
 stream_from "metrics", deliver_in_order: true
 ```
 
+Turbo Streams can opt in through the subscription element's existing data
+attributes:
+
+```erb
+<%= turbo_stream_from "metrics", data: { deliver_in_order: true } %>
+```
+
 This setting is stored per broadcasting so every process that broadcasts to that
 stream knows whether to allocate sequence numbers under a database row lock.
 Unordered messages are still persisted and delivered by Solid Cable, but they do
