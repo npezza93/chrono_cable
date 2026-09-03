@@ -4,6 +4,7 @@ class CreateSolidCableChannels < ActiveRecord::Migration[8.1]
       t.integer :channel_hash, limit: 8, null: false
       t.bigint :current_id, default: 0, null: false
       t.index :channel_hash, unique: true
+      t.boolean :deliver_in_order, default: false, null: false
 
       t.timestamps
     end

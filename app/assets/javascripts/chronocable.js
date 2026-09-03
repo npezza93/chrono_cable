@@ -322,6 +322,11 @@ class Stream {
       this.id = earliestId - 1;
     }
   }
+  skipMissingIdsBefore(id) {
+    if (this.isBehind(id) && !this.messageIsProcessable(id)) {
+      this.id = id - 1;
+    }
+  }
   caughtUp() {
     this.recovering = false;
   }
@@ -353,6 +358,7 @@ class Stream {
   processMessages(messages, callback, earliestId) {
     this.jumpToEarliestAvailableId(earliestId);
     messages.sort((a, b) => a.id - b.id).forEach(({ id, payload }) => {
+      this.skipMissingIdsBefore(id);
       this.processMessage(id, JSON.parse(payload), callback);
     });
     this.caughtUp();
@@ -534,10 +540,10 @@ class Subscriptions {
     } else {
       return this.findAll(identifier).map((subscription) => {
         const stream = subscription.findOrCreateStream(broadcasting);
-        const processed = stream.processMessage(id, message, (message2) => {
-          this.notify(identifier, "received", message2);
-        });
+        const receive = (message2) => this.notify(subscription, "received", message2);
+        const processed = stream.processMessage(id, message, receive);
         if (processed) {
+          stream.processQueue(receive);
           return subscription;
         } else {
           return stream.recover(this, id, message);
@@ -549,7 +555,7 @@ class Subscriptions {
     return this.findAll(identifier).map((subscription) => {
       const stream = subscription.findOrCreateStream(broadcasting, id);
       stream.processMessages(messages, (message) => {
-        this.notify(identifier, "received", message);
+        this.notify(subscription, "received", message);
       }, earliest_id);
       return subscription;
     });
@@ -611,16 +617,16 @@ function getConfig(name) {
   }
 }
 export {
-  logger_default as logger,
-  getConfig,
-  createWebSocketURL,
-  createConsumer,
-  adapters_default as adapters,
-  Subscriptions,
-  subscription_guarantor_default as SubscriptionGuarantor,
-  Subscription,
-  internal_default as INTERNAL,
-  Consumer,
+  connection_default as Connection,
   connection_monitor_default as ConnectionMonitor,
-  connection_default as Connection
+  Consumer,
+  internal_default as INTERNAL,
+  Subscription,
+  subscription_guarantor_default as SubscriptionGuarantor,
+  Subscriptions,
+  adapters_default as adapters,
+  createConsumer,
+  createWebSocketURL,
+  getConfig,
+  logger_default as logger
 };

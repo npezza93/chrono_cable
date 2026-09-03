@@ -1,4 +1,6 @@
 module ChronoCable::SolidCableAdapterListener
+  Broadcast = Data.define(:channel, :payload)
+
   def add_subscriber(channel, subscriber, on_success)
     if on_success
       callback = on_success
@@ -16,6 +18,6 @@ module ChronoCable::SolidCableAdapterListener
     end
 
     def broadcast(message)
-      super(message.channel, message.action_cable_message)
+      super Broadcast.new(message.channel, message.action_cable_message)
     end
 end

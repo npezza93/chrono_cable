@@ -16,39 +16,39 @@ var __export = (target, all) => {
 // node_modules/@hotwired/turbo/dist/turbo.es2017-esm.js
 var exports_turbo_es2017_esm = {};
 __export(exports_turbo_es2017_esm, {
-  visit: () => visit,
-  start: () => start,
-  setProgressBarDelay: () => setProgressBarDelay,
-  setFormMode: () => setFormMode,
-  setConfirmMethod: () => setConfirmMethod,
-  session: () => session,
-  renderStreamMessage: () => renderStreamMessage,
-  registerAdapter: () => registerAdapter,
-  navigator: () => sessionNavigator,
-  morphTurboFrameElements: () => morphTurboFrameElements,
-  morphElements: () => morphElements,
-  morphChildren: () => morphChildren,
-  morphBodyElements: () => morphBodyElements,
-  isSafe: () => isSafe,
-  fetchMethodFromString: () => fetchMethodFromString,
-  fetchEnctypeFromString: () => fetchEnctypeFromString,
-  fetch: () => fetchWithTurboHeaders,
-  disconnectStreamSource: () => disconnectStreamSource,
-  connectStreamSource: () => connectStreamSource,
-  config: () => config,
-  cache: () => cache,
-  StreamSourceElement: () => StreamSourceElement,
-  StreamElement: () => StreamElement,
-  StreamActions: () => StreamActions,
-  PageSnapshot: () => PageSnapshot,
-  PageRenderer: () => PageRenderer,
-  FrameRenderer: () => FrameRenderer,
-  FrameLoadingStyle: () => FrameLoadingStyle,
-  FrameElement: () => FrameElement,
-  FetchResponse: () => FetchResponse,
-  FetchRequest: () => FetchRequest,
+  FetchEnctype: () => FetchEnctype,
   FetchMethod: () => FetchMethod,
-  FetchEnctype: () => FetchEnctype
+  FetchRequest: () => FetchRequest,
+  FetchResponse: () => FetchResponse,
+  FrameElement: () => FrameElement,
+  FrameLoadingStyle: () => FrameLoadingStyle,
+  FrameRenderer: () => FrameRenderer,
+  PageRenderer: () => PageRenderer,
+  PageSnapshot: () => PageSnapshot,
+  StreamActions: () => StreamActions,
+  StreamElement: () => StreamElement,
+  StreamSourceElement: () => StreamSourceElement,
+  cache: () => cache,
+  config: () => config,
+  connectStreamSource: () => connectStreamSource,
+  disconnectStreamSource: () => disconnectStreamSource,
+  fetch: () => fetchWithTurboHeaders,
+  fetchEnctypeFromString: () => fetchEnctypeFromString,
+  fetchMethodFromString: () => fetchMethodFromString,
+  isSafe: () => isSafe,
+  morphBodyElements: () => morphBodyElements,
+  morphChildren: () => morphChildren,
+  morphElements: () => morphElements,
+  morphTurboFrameElements: () => morphTurboFrameElements,
+  navigator: () => sessionNavigator,
+  registerAdapter: () => registerAdapter,
+  renderStreamMessage: () => renderStreamMessage,
+  session: () => session,
+  setConfirmMethod: () => setConfirmMethod,
+  setFormMode: () => setFormMode,
+  setProgressBarDelay: () => setProgressBarDelay,
+  start: () => start,
+  visit: () => visit
 });
 /*!
 Turbo 8.0.23
@@ -5238,10 +5238,10 @@ start();
 // app/javascript/turbo/cable.js
 var exports_cable = {};
 __export(exports_cable, {
-  subscribeTo: () => subscribeTo,
-  setConsumer: () => setConsumer,
+  createConsumer: () => createConsumer2,
   getConsumer: () => getConsumer,
-  createConsumer: () => createConsumer2
+  setConsumer: () => setConsumer,
+  subscribeTo: () => subscribeTo
 });
 
 // app/javascript/action_cable/adapters.js
@@ -5568,6 +5568,11 @@ class Stream {
       this.id = earliestId - 1;
     }
   }
+  skipMissingIdsBefore(id) {
+    if (this.isBehind(id) && !this.messageIsProcessable(id)) {
+      this.id = id - 1;
+    }
+  }
   caughtUp() {
     this.recovering = false;
   }
@@ -5599,6 +5604,7 @@ class Stream {
   processMessages(messages, callback, earliestId) {
     this.jumpToEarliestAvailableId(earliestId);
     messages.sort((a, b) => a.id - b.id).forEach(({ id, payload }) => {
+      this.skipMissingIdsBefore(id);
       this.processMessage(id, JSON.parse(payload), callback);
     });
     this.caughtUp();
@@ -5780,10 +5786,10 @@ class Subscriptions {
     } else {
       return this.findAll(identifier).map((subscription) => {
         const stream = subscription.findOrCreateStream(broadcasting);
-        const processed = stream.processMessage(id, message, (message2) => {
-          this.notify(identifier, "received", message2);
-        });
+        const receive = (message2) => this.notify(subscription, "received", message2);
+        const processed = stream.processMessage(id, message, receive);
         if (processed) {
+          stream.processQueue(receive);
           return subscription;
         } else {
           return stream.recover(this, id, message);
@@ -5795,7 +5801,7 @@ class Subscriptions {
     return this.findAll(identifier).map((subscription) => {
       const stream = subscription.findOrCreateStream(broadcasting, id);
       stream.processMessages(messages, (message) => {
-        this.notify(identifier, "received", message);
+        this.notify(subscription, "received", message);
       }, earliest_id);
       return subscription;
     });
@@ -5984,6 +5990,6 @@ function isBodyInit(body) {
 window.Turbo = exports_turbo_es2017_esm;
 addEventListener("turbo:before-fetch-request", encodeMethodIntoRequestBody);
 export {
-  exports_cable as cable,
-  exports_turbo_es2017_esm as Turbo
+  exports_turbo_es2017_esm as Turbo,
+  exports_cable as cable
 };
