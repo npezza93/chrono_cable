@@ -29,6 +29,12 @@ export default class Stream {
     }
   }
 
+  skipMissingIdsBefore(id) {
+    if (this.isBehind(id) && !this.messageIsProcessable(id)) {
+      this.id = id - 1
+    }
+  }
+
   caughtUp() {
     this.recovering = false
   }
@@ -69,6 +75,7 @@ export default class Stream {
     messages
       .sort((a, b) => a.id - b.id)
       .forEach(({ id, payload }) => {
+        this.skipMissingIdsBefore(id)
         this.processMessage(id, JSON.parse(payload), callback)
       })
 

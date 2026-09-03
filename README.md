@@ -1,34 +1,44 @@
 # ChronoCable
 
-ChronoCable adds ordered, recoverable Action Cable streams backed by Solid Cable.
-Every broadcast sent through Action Cable's Solid Cable adapter receives a
-per-broadcasting sequence number. The default browser stream handler tracks those
-numbers, detects gaps, requests the missing messages, and delivers them to the
-subscription in order. The same behavior applies to Turbo Streams without changing
-application code.
+ChronoCable adds opt-in ordered, recoverable Action Cable streams backed by Solid
+Cable. Ordered streams receive a per-broadcasting sequence number. The default
+browser stream handler tracks those numbers, detects gaps, requests the missing
+messages, and delivers them to the subscription in order.
 
 ChronoCable requires Rails 8.2 or newer and Solid Cable 4.1 or newer.
 
 ## How it works
 
-When Action Cable broadcasts a message, ChronoCable:
+When Action Cable broadcasts a message to an ordered stream, ChronoCable:
 
 1. Locks a database record for that broadcasting and assigns its next ID.
 2. Passes the numbered message to Solid Cable's batched broadcaster.
 3. Persists the batch with each message's broadcasting-specific ID.
 4. Sends the ID and broadcasting name alongside the normal Action Cable payload.
 
-The ChronoCable client keeps the last processed ID for each default stream. If it
-receives a later ID than expected, it queues that message and asks the server for
-history after its last processed ID. Retained messages are replayed in order before
-the queued live messages are delivered.
+The ChronoCable client keeps the last processed ID for each ordered default stream.
+If it receives a later ID than expected, it queues that message and asks the server
+for history after its last processed ID. Retained messages are replayed in order
+before the queued live messages are delivered.
 
 On initial subscription, the server reports the highest ID already persisted for
-each stream. On reconnection, the client keeps its previous position and requests
-anything persisted while it was disconnected.
+each ordered stream. On reconnection, the client keeps its previous position and
+requests anything persisted while it was disconnected.
 
 Sequence numbers are independent for each broadcasting. There is no global order
 between different broadcastings.
+
+Streams are unordered by default. Opt in to ordering and gap recovery when
+subscribing:
+
+```ruby
+stream_from "metrics", deliver_in_order: true
+```
+
+This setting is stored per broadcasting so every process that broadcasts to that
+stream knows whether to allocate sequence numbers under a database row lock.
+Unordered messages are still persisted and delivered by Solid Cable, but they do
+not include stream IDs and cannot be replayed through ChronoCable.
 
 ## Installation
 
@@ -48,8 +58,8 @@ bin/rails db:migrate
 
 The generator:
 
-- Creates `solid_cable_channels`, which stores the current ID for each
-  broadcasting.
+- Creates `solid_cable_channels`, which stores each broadcasting's current ID and
+  delivery-order preference.
 - Adds `channel_id` and a unique per-broadcasting index to
   `solid_cable_messages`.
 - Replaces the standard Action Cable and Turbo importmap pins with ChronoCable's
@@ -77,7 +87,7 @@ Cable replacement.
 A stream with a custom callback or block remains replayable:
 
 ```ruby
-stream_from "metrics", coder: ActiveSupport::JSON do |message|
+stream_from "metrics", coder: ActiveSupport::JSON, deliver_in_order: true do |message|
   record_metric message
 end
 ```

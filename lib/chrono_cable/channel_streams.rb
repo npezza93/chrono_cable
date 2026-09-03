@@ -1,8 +1,11 @@
 module ChronoCable::ChannelStreams
-  def stream_from(broadcasting, callback = nil, coder: nil, &block)
+  def stream_from(broadcasting, callback = nil, coder: nil, deliver_in_order: false, &block)
     return if unsubscribed?
 
     broadcasting = String(broadcasting)
+
+    ordered_streams.delete broadcasting
+    pubsub.enable_ordered_delivery(broadcasting) if deliver_in_order && pubsub.supports_history?
 
     # Don't send the confirmation until pubsub#subscribe is successful
     defer_subscription_confirmation!
@@ -12,14 +15,15 @@ module ChronoCable::ChannelStreams
     user_handler = callback || block
     handler = worker_pool_stream_handler(broadcasting, user_handler, coder: coder)
     streams[broadcasting] = handler
-    if user_handler
-      history_streams[broadcasting] = stream_handler(broadcasting, user_handler, coder:)
+
+    if deliver_in_order && pubsub.supports_history?
+      ordered_streams[broadcasting] = user_handler && stream_handler(broadcasting, user_handler, coder:)
     end
 
     pubsub.subscribe(broadcasting, handler, lambda do |last_id = nil|
       confirmation_was_sent = subscription_confirmation_sent?
 
-      record_subscription_confirmation_id broadcasting, last_id if history_stream?(broadcasting) && pubsub.supports_history?
+      record_subscription_confirmation_id broadcasting, last_id if ordered_stream?(broadcasting)
       ensure_confirmation_sent
       transmit_subscription_id broadcasting, last_id if confirmation_was_sent
 
@@ -29,13 +33,13 @@ module ChronoCable::ChannelStreams
 
   def stop_all_streams
     super
-    history_streams.clear
+    ordered_streams.clear
   end
 
   def stop_stream_from(broadcasting)
     broadcasting = String(broadcasting)
     super
-    history_streams.delete(broadcasting)
+    ordered_streams.delete broadcasting
   end
 
   private
@@ -59,16 +63,18 @@ module ChronoCable::ChannelStreams
             message
           end
 
-        transmit data, via: via, id: message.try(:id), broadcasting:
+        params = { via: via }
+        params.merge!(id: message.try(:id), broadcasting:) if ordered_stream?(broadcasting)
+        transmit data, **params
       end
     end
 
-    def history_streams
-      @history_streams ||= {}
+    def ordered_streams
+      @ordered_streams ||= {}
     end
 
-    def history_stream?(broadcasting)
-      history_streams.key?(broadcasting)
+    def ordered_stream?(broadcasting)
+      ordered_streams.key? broadcasting
     end
 
     def record_subscription_confirmation_id(broadcasting, id)
@@ -83,29 +89,23 @@ module ChronoCable::ChannelStreams
       return unless broadcasting
 
       broadcasting = String(broadcasting)
-      if pubsub.supports_history? && history_stream?(broadcasting)
-        messages = pubsub.history(broadcasting, after_id: data["id"])
-        history_handler = history_streams[broadcasting]
+      return unless ordered_stream?(broadcasting)
 
-        if history_handler
-          replay_history messages, with: history_handler
-          transmit_history [], broadcasting:
-        else
-          transmit_history messages, broadcasting:
+      messages = pubsub.history(broadcasting, after_id: data["id"])
+      if handler = ordered_streams[broadcasting]
+        messages.each do |message|
+          handler.call ActionCable::SubscriptionAdapter::Message.new(
+            id: message[:id], payload: message[:payload]
+          )
         end
-      end
-    end
-
-    def replay_history(messages, with:)
-      messages.each do |message|
-        with.call ActionCable::SubscriptionAdapter::Message.new(
-          id: message[:id], payload: message[:payload]
-        )
+        transmit_history [], broadcasting:
+      else
+        transmit_history messages, broadcasting:
       end
     end
 
     def transmit_subscription_id(broadcasting, id)
-      return unless history_stream?(broadcasting) && pubsub.supports_history? && id
+      return unless ordered_stream?(broadcasting) && id
 
       transmit_history [], broadcasting:, id:
     end

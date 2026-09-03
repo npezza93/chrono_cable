@@ -26,6 +26,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_29_194211) do
     t.integer "channel_hash", limit: 8, null: false
     t.datetime "created_at", null: false
     t.integer "current_id", limit: 8, default: 0, null: false
+    t.boolean "deliver_in_order", default: false, null: false
     t.datetime "updated_at", null: false
     t.index ["channel_hash"], name: "index_solid_cable_channels_on_channel_hash", unique: true
   end

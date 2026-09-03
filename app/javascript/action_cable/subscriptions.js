@@ -118,12 +118,12 @@ export default class Subscriptions {
     } else {
       return this.findAll(identifier).map((subscription) => {
         const stream = subscription.findOrCreateStream(broadcasting)
+        const receive = (message) => this.notify(subscription, "received", message)
 
-        const processed = stream.processMessage(id, message, (message) => {
-          this.notify(identifier, "received", message)
-        })
+        const processed = stream.processMessage(id, message, receive)
 
         if (processed) {
+          stream.processQueue(receive)
           return subscription
         } else {
           return stream.recover(this, id, message)
@@ -137,7 +137,7 @@ export default class Subscriptions {
       const stream = subscription.findOrCreateStream(broadcasting, id)
 
       stream.processMessages(messages, (message) => {
-        this.notify(identifier, "received", message)
+        this.notify(subscription, "received", message)
       }, earliest_id)
 
       return subscription
