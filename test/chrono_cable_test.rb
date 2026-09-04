@@ -18,7 +18,6 @@ class ChronoCableTest < ActiveSupport::TestCase
     assert_includes SolidCable::BatchedBroadcaster.ancestors,
       ChronoCable::SolidCableBroadcasting
     assert_includes SolidCable::Message.singleton_class.ancestors,
-      ChronoCable::SolidCableMessage::BroadcastingClassMethods
-    assert_includes SolidCable::Message.ancestors, ChronoCable::SolidCableMessage
+      ChronoCable::SolidCableMessageClassMethods
   end
 end

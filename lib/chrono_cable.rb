@@ -9,7 +9,7 @@ require "chrono_cable/channel_base"
 require "chrono_cable/channel_streams"
 require "chrono_cable/turbo_streams_channel"
 
-require "chrono_cable/solid_cable_message"
+require "chrono_cable/solid_cable_message_class_methods"
 require "chrono_cable/solid_cable_adapter_listener"
 require "chrono_cable/solid_cable_adapter"
 require "chrono_cable/solid_cable_broadcasting"
@@ -29,7 +29,6 @@ module ChronoCable
     ::ActionCable::SubscriptionAdapter::SolidCable.include ChronoCable::SolidCableAdapter
 
     SolidCable::BatchedBroadcaster.prepend ::ChronoCable::SolidCableBroadcasting
-    SolidCable::Message.singleton_class.prepend ::ChronoCable::SolidCableMessage::BroadcastingClassMethods
-    SolidCable::Message.prepend ::ChronoCable::SolidCableMessage
+    SolidCable::Message.singleton_class.prepend ::ChronoCable::SolidCableMessageClassMethods
   end
 end

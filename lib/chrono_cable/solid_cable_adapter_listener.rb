@@ -18,6 +18,11 @@ module ChronoCable::SolidCableAdapterListener
     end
 
     def broadcast(message)
-      super Broadcast.new(message.channel, message.action_cable_message)
+      payload = ::ActionCable::SubscriptionAdapter::Message.new(
+        payload: message.payload,
+        id: message.channel_id
+      )
+
+      super Broadcast.new(message.channel, payload)
     end
 end
