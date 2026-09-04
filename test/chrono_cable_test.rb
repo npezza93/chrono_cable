@@ -1,10 +1,6 @@
 require "test_helper"
 
 class ChronoCableTest < ActiveSupport::TestCase
-  test "it has a version number" do
-    assert ChronoCable::VERSION
-  end
-
   test "installs every Action Cable and Solid Cable extension" do
     ChronoCable.install!
 

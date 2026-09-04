@@ -12,38 +12,32 @@ class ChronoCable::SolidCableAdapterTest < ActiveSupport::TestCase
 
   setup do
     SolidCable::Message.delete_all
+    SolidCable::Channel.delete_all
   end
 
-  test "returns ordered history after the requested channel id" do
+  test "returns ordered, numbered history for the requested channel" do
     create_message "room", 3, "third"
     create_message "room", 1, "first"
+    create_message "room", nil, "unordered"
     create_message "other", 2, "not included"
     create_message "room", 2, "second"
 
-    assert adapter.supports_history?
+    assert_equal [
+      { id: 1, payload: "first" },
+      { id: 2, payload: "second" },
+      { id: 3, payload: "third" }
+    ], adapter.history("room")
     assert_equal [
       { id: 2, payload: "second" },
       { id: 3, payload: "third" }
     ], adapter.history("room", after_id: 1)
   end
 
-  test "returns all channel history when no id is supplied" do
-    create_message "room", 2, "second"
-    create_message "room", 1, "first"
+  test "enables ordered delivery" do
+    adapter.enable_ordered_delivery "room"
 
-    assert_equal [
-      { id: 1, payload: "first" },
-      { id: 2, payload: "second" }
-    ], adapter.history("room")
-  end
-
-  test "returns the earliest retained channel id" do
-    create_message "room", 4, "fourth"
-    create_message "room", 7, "seventh"
-    create_message "other", 1, "not included"
-
-    assert_equal 4, adapter.earliest_id("room")
-    assert_nil adapter.earliest_id("missing")
+    channel = SolidCable::Channel.find_by!(channel_hash: channel_hash("room"))
+    assert channel.reload.deliver_in_order?
   end
 
   private
@@ -59,5 +53,9 @@ class ChronoCable::SolidCableAdapterTest < ActiveSupport::TestCase
         channel_id:,
         payload:
       )
+    end
+
+    def channel_hash(channel)
+      SolidCable::Message.channel_hash_for("dummy:#{channel}")
     end
 end

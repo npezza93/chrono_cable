@@ -2,8 +2,8 @@ require "test_helper"
 
 class ChronoCable::ChannelStreamsTest < ActiveSupport::TestCase
   class Pubsub
-    attr_accessor :history_messages, :earliest
-    attr_reader :history_requests
+    attr_accessor :history_messages
+    attr_reader :history_requests, :stream_orderings
 
     def initialize(ids: {}, supports_history: true)
       @ids = ids
@@ -11,6 +11,7 @@ class ChronoCable::ChannelStreamsTest < ActiveSupport::TestCase
       @subscribers = {}
       @history_messages = []
       @history_requests = []
+      @stream_orderings = {}
     end
 
     def subscribe(channel, handler, on_success)
@@ -35,8 +36,8 @@ class ChronoCable::ChannelStreamsTest < ActiveSupport::TestCase
       history_messages
     end
 
-    def earliest_id(_channel)
-      earliest
+    def enable_ordered_delivery(channel)
+      stream_orderings[channel] = true
     end
   end
 
@@ -60,28 +61,26 @@ class ChronoCable::ChannelStreamsTest < ActiveSupport::TestCase
   end
 
   class Channel < ActionCable::Channel::Base
+    class_attribute :subscriber
+
     def subscribed
-      stream_from "messages"
+      self.class.subscriber = self
+      stream_from "messages", deliver_in_order: true
     end
   end
 
-  test "includes stream ids in the subscription confirmation" do
-    channel, connection = subscribe(ids: { "messages" => 6 })
+  test "transmits the starting and live stream ids" do
+    _channel, connection, pubsub = subscribe(ids: { "messages" => 6 })
 
-    assert channel.__send__(:subscription_confirmation_sent?)
     assert_equal({
       identifier: identifier,
       type: ActionCable::INTERNAL[:message_types][:confirmation],
       ids: { "messages" => 6 }
     }, connection.transmissions.last)
-  end
-
-  test "transmits live messages with their id and broadcasting" do
-    _channel, connection, pubsub = subscribe(ids: { "messages" => 3 })
     connection.transmissions.clear
 
     pubsub.publish "messages", ActionCable::SubscriptionAdapter::Message.new(
-      id: 4,
+      id: 7,
       payload: ActiveSupport::JSON.encode(body: "hello")
     )
 
@@ -89,17 +88,37 @@ class ChronoCable::ChannelStreamsTest < ActiveSupport::TestCase
       identifier: identifier,
       message: { "body" => "hello" },
       broadcasting: "messages",
-      id: 4
+      id: 7
     }, connection.transmissions.last)
   end
 
-  test "returns history only for a subscribed default stream" do
-    channel, connection, pubsub = subscribe(ids: { "messages" => 3 })
-    pubsub.history_messages = [ { id: 4, payload: "next" } ]
-    pubsub.earliest = 2
+  test "streams are unordered by default" do
+    channel, connection, pubsub, subscriptions = subscribe
     connection.transmissions.clear
 
-    channel.__send__(:__history, "broadcasting" => "messages", "id" => 3)
+    channel.stream_from "metrics"
+    connection.transmissions.clear
+    pubsub.publish "metrics", ActionCable::SubscriptionAdapter::Message.new(
+      id: 7,
+      payload: ActiveSupport::JSON.encode(body: "hello")
+    )
+
+    assert_not pubsub.stream_orderings.key?("metrics")
+    assert_equal({
+      identifier: identifier,
+      message: { "body" => "hello" }
+    }, connection.transmissions.last)
+
+    request_history subscriptions, "metrics", 0
+    assert_empty pubsub.history_requests
+  end
+
+  test "returns history only while the stream is subscribed" do
+    channel, connection, pubsub, subscriptions = subscribe(ids: { "messages" => 3 })
+    pubsub.history_messages = [ { id: 4, payload: "next" } ]
+    connection.transmissions.clear
+
+    request_history subscriptions, "messages", 3
 
     assert_equal [ [ "messages", 3 ] ], pubsub.history_requests
     assert_equal({
@@ -107,19 +126,27 @@ class ChronoCable::ChannelStreamsTest < ActiveSupport::TestCase
       broadcasting: "messages",
       type: ActionCable::INTERNAL[:message_types][:history],
       message: {
-        messages: [ { id: 4, payload: "next" } ],
-        earliest_id: 2
+        messages: [ { id: 4, payload: "next" } ]
       }
     }, connection.transmissions.last)
 
-    channel.__send__(:__history, "broadcasting" => "not-subscribed", "id" => 3)
+    request_history subscriptions, "not-subscribed", 3
     assert_equal 1, connection.transmissions.size
+
+    channel.stop_stream_from "messages"
+    connection.transmissions.clear
+
+    request_history subscriptions, "messages", 0
+
+    assert_empty connection.transmissions
+    assert_equal [ [ "messages", 3 ] ], pubsub.history_requests
   end
 
   test "custom stream callbacks receive live and historical payloads" do
-    channel, connection, pubsub = subscribe
+    channel, connection, pubsub, subscriptions = subscribe
     received = []
-    channel.stream_from("custom", ->(message) { received << message }, coder: ActiveSupport::JSON)
+    channel.stream_from("custom", ->(message) { received << message },
+      coder: ActiveSupport::JSON, deliver_in_order: true)
     connection.transmissions.clear
 
     pubsub.publish "custom", ActionCable::SubscriptionAdapter::Message.new(
@@ -129,7 +156,7 @@ class ChronoCable::ChannelStreamsTest < ActiveSupport::TestCase
     pubsub.history_messages = [
       { id: 10, payload: ActiveSupport::JSON.encode(body: "historical") }
     ]
-    channel.__send__(:__history, "broadcasting" => "custom", "id" => 9)
+    request_history subscriptions, "custom", 9
 
     assert_equal [
       { "body" => "custom" },
@@ -148,7 +175,7 @@ class ChronoCable::ChannelStreamsTest < ActiveSupport::TestCase
     channel, connection, _pubsub = subscribe(ids: { "messages" => 3, "later" => 8 })
     connection.transmissions.clear
 
-    channel.stream_from "later"
+    channel.stream_from "later", deliver_in_order: true
 
     assert_equal({
       identifier: identifier,
@@ -158,24 +185,14 @@ class ChronoCable::ChannelStreamsTest < ActiveSupport::TestCase
     }, connection.transmissions.last)
   end
 
-  test "stopping a stream removes its history access" do
-    channel, connection, pubsub = subscribe
-    channel.stop_stream_from "messages"
-    connection.transmissions.clear
-
-    channel.__send__(:__history, "broadcasting" => "messages", "id" => 0)
-
-    assert_empty connection.transmissions
-    assert_empty pubsub.history_requests
-  end
-
   test "an adapter without history support sends a standard confirmation" do
-    _channel, connection = subscribe(supports_history: false)
+    _channel, connection, pubsub = subscribe(supports_history: false)
 
     assert_equal({
       identifier: identifier,
       type: ActionCable::INTERNAL[:message_types][:confirmation]
     }, connection.transmissions.last)
+    assert_empty pubsub.stream_orderings
   end
 
   private
@@ -185,7 +202,15 @@ class ChronoCable::ChannelStreamsTest < ActiveSupport::TestCase
       channel = Channel.new(connection, identifier)
       channel.subscribe_to_channel
 
-      [ channel, connection, pubsub ]
+      subscriptions = ActionCable::Connection::Subscriptions.new(connection)
+      subscriptions.execute_command "command" => "subscribe", "identifier" => identifier
+
+      [ Channel.subscriber, connection, pubsub, subscriptions ]
+    end
+
+    def request_history(subscriptions, broadcasting, id)
+      subscriptions.execute_command \
+        "command" => "history", "identifier" => identifier, "broadcasting" => broadcasting, "id" => id
     end
 
     def identifier

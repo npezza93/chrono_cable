@@ -10,9 +10,13 @@ class ChronoCable::SolidCableAdapterListenerTest < ActiveSupport::TestCase
       on_success&.call
     end
 
+    def deliver(message)
+      broadcast message
+    end
+
     private
-      def broadcast(channel, message)
-        @broadcasted = [ channel, message ]
+      def broadcast(message)
+        @broadcasted = [ message.channel, message.payload ]
       end
   end
 
@@ -21,32 +25,18 @@ class ChronoCable::SolidCableAdapterListenerTest < ActiveSupport::TestCase
     SolidCable::Message.delete_all
   end
 
-  test "subscription id is the latest persisted message rather than the reserved channel id" do
+  test "reports the latest persisted id when subscribing" do
     channel = "messages"
     channel_hash = SolidCable::Message.channel_hash_for(channel)
-
     SolidCable::Channel.create!(channel_hash:, current_id: 2)
+    received_ids = []
 
-    assert_equal 0, current_channel_id(channel)
+    Listener.new.add_subscriber(channel, -> { }, ->(id) { received_ids << id })
 
     SolidCable::Message.create!(channel:, channel_hash:, channel_id: 1, payload: "first")
+    Listener.new.add_subscriber(channel, -> { }, ->(id) { received_ids << id })
 
-    assert_equal 1, current_channel_id(channel)
-  end
-
-  test "passes the persisted channel id to the subscription callback" do
-    channel = "messages"
-    SolidCable::Message.create!(
-      channel:,
-      channel_hash: SolidCable::Message.channel_hash_for(channel),
-      channel_id: 3,
-      payload: "third"
-    )
-    received_id = nil
-
-    Listener.new.add_subscriber(channel, -> { }, ->(id) { received_id = id })
-
-    assert_equal 3, received_id
+    assert_equal [ 0, 1 ], received_ids
   end
 
   test "wraps broadcast payloads with their channel id" do
@@ -57,24 +47,11 @@ class ChronoCable::SolidCableAdapterListenerTest < ActiveSupport::TestCase
       channel_id: 5,
       payload: "payload"
     )
-    record.extend ChronoCable::SolidCableMessage
-
-    listener.__send__(:broadcast, record)
+    listener.deliver record
 
     channel, message = listener.broadcasted
     assert_equal "messages", channel
     assert_equal 5, message.id
     assert_equal "payload", message.payload
   end
-
-  private
-    def current_channel_id(channel)
-      @current_channel_id_reader ||= Class.new do
-        include ChronoCable::SolidCableAdapterListener
-
-        public :current_channel_id
-      end.new
-
-      @current_channel_id_reader.current_channel_id(channel)
-    end
 end

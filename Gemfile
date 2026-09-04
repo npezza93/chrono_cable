@@ -11,6 +11,7 @@ gem "propshaft"
 
 gem "solid_cable", github: "rails/solid_cable", branch: "main"
 gem "rails", github: "rails/rails", branch: "main"
+gem "turbo-rails"
 
 # Omakase Ruby styling [https://github.com/rails/rubocop-rails-omakase/]
 gem "rubocop-rails-omakase", require: false

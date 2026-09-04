@@ -2,7 +2,8 @@
   "name": "actioncable",
   "type": "module",
   "scripts": {
-    "build": "bun run bun.config.js"
+    "build": "bun run bun.config.js",
+    "test": "bun test"
   },
   "dependencies": {
     "@hotwired/turbo": "^8.0.23"

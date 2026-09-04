@@ -15,20 +15,33 @@ class ChronoCable::SolidCableBroadcastingTest < ActiveSupport::TestCase
     SolidCable::Channel.delete_all
   end
 
-  test "assigns consecutive ids within each channel" do
+  test "assigns ids only to ordered channels" do
     broadcaster = Broadcaster.new
+    SolidCable::Channel.create!(channel_hash: channel_hash("notifications"), deliver_in_order: true)
 
+    broadcaster.broadcast "messages", "unordered"
+    channel_record("messages").update!(deliver_in_order: true)
     broadcaster.broadcast "messages", "first"
     broadcaster.broadcast "messages", "second"
     broadcaster.broadcast "notifications", "other"
 
-    first, second, other = 3.times.map { broadcaster.queue.pop }
+    unordered, first, second, other = 4.times.map { broadcaster.queue.pop }
 
+    assert_nil unordered.channel_id
     assert_equal [ "messages", "first", 1 ], first.values
     assert_equal [ "messages", "second", 2 ], second.values
     assert_equal [ "notifications", "other", 1 ], other.values
     assert_equal 2, channel_record("messages").current_id
     assert_equal 1, channel_record("notifications").current_id
+
+    SolidCable::Message.broadcast_batch [ unordered, first, second, other ]
+
+    assert_equal [
+      [ "messages", "unordered", nil ],
+      [ "messages", "first", 1 ],
+      [ "messages", "second", 2 ],
+      [ "notifications", "other", 1 ]
+    ], SolidCable::Message.order(:id).pluck(:channel, :payload, :channel_id)
   end
 
   test "raises the Solid Cable stopped error when the queue is closed" do
