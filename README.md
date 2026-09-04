@@ -109,7 +109,7 @@ automatically transmit the original payload to the browser.
 - IDs are assigned synchronously under a database row lock; message inserts remain
   batched by Solid Cable.
 - Replay is limited to messages still retained by Solid Cable. If older messages
-  have been trimmed, the client advances to the earliest available ID and resumes.
+  have been trimmed, the client resumes at the first available ID.
 - A process crash after an ID is reserved but before its in-memory batch is
   persisted can leave a permanent gap. Database-backed sequence assignment and an
   in-memory batch cannot be committed atomically.

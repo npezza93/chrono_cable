@@ -93,14 +93,11 @@ export default class Subscriptions {
 
   confirmSubscription(identifier, ids) {
     logger.log(`Subscription confirmed ${identifier}`)
-    this.findAll(identifier).map((subscription) => {
+    this.findAll(identifier).forEach((subscription) => {
       if (ids != null) {
         Object.entries(ids).forEach(([broadcasting, id]) => {
           const stream = subscription.findOrCreateStream(broadcasting, id)
-
-          if (stream.isBehind(id)) {
-            stream.restartRecovery(this)
-          }
+          if (stream.isBehind(id)) stream.restartRecovery(this)
         })
       }
       this.guarantor.forget(subscription)
@@ -115,30 +112,28 @@ export default class Subscriptions {
   receive(identifier, message, id, broadcasting) {
     if (id == null || broadcasting == null) {
       return this.notify(identifier, "received", message)
-    } else {
-      return this.findAll(identifier).map((subscription) => {
-        const stream = subscription.findOrCreateStream(broadcasting)
-        const receive = (message) => this.notify(subscription, "received", message)
-
-        const processed = stream.processMessage(id, message, receive)
-
-        if (processed) {
-          stream.processQueue(receive)
-          return subscription
-        } else {
-          return stream.recover(this, id, message)
-        }
-      })
     }
+
+    return this.findAll(identifier).map((subscription) => {
+      const stream = subscription.findOrCreateStream(broadcasting)
+      const receive = (message) => this.notify(subscription, "received", message)
+
+      if (stream.processMessage(id, message, receive)) {
+        stream.processQueue(receive)
+      } else {
+        stream.recover(this, id, message)
+      }
+
+      return subscription
+    })
   }
 
-  ingestHistory(identifier, broadcasting, {messages = [], earliest_id, id}) {
+  ingestHistory(identifier, broadcasting, {messages = [], id}) {
     return this.findAll(identifier).map((subscription) => {
       const stream = subscription.findOrCreateStream(broadcasting, id)
 
-      stream.processMessages(messages, (message) => {
-        this.notify(subscription, "received", message)
-      }, earliest_id)
+      stream.processMessages(messages,
+        (message) => this.notify(subscription, "received", message))
 
       return subscription
     })

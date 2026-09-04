@@ -3,9 +3,10 @@ module ChronoCable::ChannelStreams
     return if unsubscribed?
 
     broadcasting = String(broadcasting)
+    ordered = deliver_in_order && pubsub.supports_history?
 
     ordered_streams.delete broadcasting
-    pubsub.enable_ordered_delivery(broadcasting) if deliver_in_order && pubsub.supports_history?
+    pubsub.enable_ordered_delivery(broadcasting) if ordered
 
     # Don't send the confirmation until pubsub#subscribe is successful
     defer_subscription_confirmation!
@@ -16,7 +17,7 @@ module ChronoCable::ChannelStreams
     handler = worker_pool_stream_handler(broadcasting, user_handler, coder: coder)
     streams[broadcasting] = handler
 
-    if deliver_in_order && pubsub.supports_history?
+    if ordered
       ordered_streams[broadcasting] = user_handler && stream_handler(broadcasting, user_handler, coder:)
     end
 
@@ -111,11 +112,7 @@ module ChronoCable::ChannelStreams
     end
 
     def transmit_history(messages, broadcasting:, id: nil)
-      message = {
-        messages:,
-        earliest_id: pubsub.earliest_id(broadcasting),
-        id:
-      }.compact
+      message = { messages:, id: }.compact
 
       connection.transmit identifier: @identifier, broadcasting:,
         type: ActionCable::INTERNAL[:message_types][:history], message: message

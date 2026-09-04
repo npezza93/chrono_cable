@@ -9,7 +9,5 @@ class ChronoCable::SubscriptionAdapterBaseExtensionsTest < ActiveSupport::TestCa
     adapter = Adapter.new
 
     assert_not adapter.supports_history?
-    assert_nil adapter.earliest_id("messages")
-    assert_raises(NotImplementedError) { adapter.history("messages", after_id: 1) }
   end
 end

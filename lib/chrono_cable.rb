@@ -28,7 +28,6 @@ module ChronoCable
     ::ActionCable::SubscriptionAdapter::SolidCable::Listener.prepend ::ChronoCable::SolidCableAdapterListener
     ::ActionCable::SubscriptionAdapter::SolidCable.include ChronoCable::SolidCableAdapter
 
-
     SolidCable::BatchedBroadcaster.prepend ::ChronoCable::SolidCableBroadcasting
     SolidCable::Message.singleton_class.prepend ::ChronoCable::SolidCableMessage::BroadcastingClassMethods
     SolidCable::Message.prepend ::ChronoCable::SolidCableMessage

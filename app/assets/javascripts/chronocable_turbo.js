@@ -5551,30 +5551,8 @@ class Stream {
     this.recovering = false;
     this.queue = [];
   }
-  increment(id) {
-    this.id = id;
-  }
-  messageWasProcessed(id) {
-    return this.id != null && id <= this.id;
-  }
-  messageIsProcessable(id) {
-    return this.id == null || id === this.id + 1;
-  }
   isBehind(id) {
     return this.id != null && this.id < id;
-  }
-  jumpToEarliestAvailableId(earliestId) {
-    if (this.id != null && earliestId != null && earliestId > this.id + 1) {
-      this.id = earliestId - 1;
-    }
-  }
-  skipMissingIdsBefore(id) {
-    if (this.isBehind(id) && !this.messageIsProcessable(id)) {
-      this.id = id - 1;
-    }
-  }
-  caughtUp() {
-    this.recovering = false;
   }
   recover(subscriptions, id, message) {
     this.queue.push({ id, message });
@@ -5591,24 +5569,26 @@ class Stream {
     this.requestHistory(subscriptions);
   }
   processMessage(id, payload, callback) {
-    if (this.messageWasProcessed(id))
+    if (this.id != null && id <= this.id)
       return true;
-    if (this.messageIsProcessable(id)) {
-      this.increment(id);
+    if (this.id == null || id === this.id + 1) {
+      this.id = id;
       callback(payload);
       return true;
-    } else {
-      return false;
     }
+    return false;
   }
-  processMessages(messages, callback, earliestId) {
-    this.jumpToEarliestAvailableId(earliestId);
-    messages.sort((a, b) => a.id - b.id).forEach(({ id, payload }) => {
-      this.skipMissingIdsBefore(id);
-      this.processMessage(id, JSON.parse(payload), callback);
+  processMessages(messages, callback) {
+    const history2 = messages.map(({ id, payload }) => ({ id, message: JSON.parse(payload) }));
+    this.queue = history2.concat(this.queue);
+    this.queue.sort((a, b) => a.id - b.id).forEach(({ id, message }) => {
+      if (this.id == null || id > this.id) {
+        this.id = id;
+        callback(message);
+      }
     });
-    this.caughtUp();
-    this.processQueue(callback);
+    this.queue = [];
+    this.recovering = false;
     return this.subscription;
   }
   processQueue(callback) {
@@ -5764,13 +5744,12 @@ class Subscriptions {
   }
   confirmSubscription(identifier, ids) {
     logger_default.log(`Subscription confirmed ${identifier}`);
-    this.findAll(identifier).map((subscription) => {
+    this.findAll(identifier).forEach((subscription) => {
       if (ids != null) {
         Object.entries(ids).forEach(([broadcasting, id]) => {
           const stream = subscription.findOrCreateStream(broadcasting, id);
-          if (stream.isBehind(id)) {
+          if (stream.isBehind(id))
             stream.restartRecovery(this);
-          }
         });
       }
       this.guarantor.forget(subscription);
@@ -5783,26 +5762,22 @@ class Subscriptions {
   receive(identifier, message, id, broadcasting) {
     if (id == null || broadcasting == null) {
       return this.notify(identifier, "received", message);
-    } else {
-      return this.findAll(identifier).map((subscription) => {
-        const stream = subscription.findOrCreateStream(broadcasting);
-        const receive = (message2) => this.notify(subscription, "received", message2);
-        const processed = stream.processMessage(id, message, receive);
-        if (processed) {
-          stream.processQueue(receive);
-          return subscription;
-        } else {
-          return stream.recover(this, id, message);
-        }
-      });
     }
+    return this.findAll(identifier).map((subscription) => {
+      const stream = subscription.findOrCreateStream(broadcasting);
+      const receive = (message2) => this.notify(subscription, "received", message2);
+      if (stream.processMessage(id, message, receive)) {
+        stream.processQueue(receive);
+      } else {
+        stream.recover(this, id, message);
+      }
+      return subscription;
+    });
   }
-  ingestHistory(identifier, broadcasting, { messages = [], earliest_id, id }) {
+  ingestHistory(identifier, broadcasting, { messages = [], id }) {
     return this.findAll(identifier).map((subscription) => {
       const stream = subscription.findOrCreateStream(broadcasting, id);
-      stream.processMessages(messages, (message) => {
-        this.notify(subscription, "received", message);
-      }, earliest_id);
+      stream.processMessages(messages, (message) => this.notify(subscription, "received", message));
       return subscription;
     });
   }

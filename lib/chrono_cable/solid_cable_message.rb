@@ -10,10 +10,6 @@ module ChronoCable::SolidCableMessage
   end
 
   def action_cable_message
-    if defined?(::ActionCable::SubscriptionAdapter::Message)
-      ::ActionCable::SubscriptionAdapter::Message.new(payload:, id: channel_id)
-    else
-      payload
-    end
+    ::ActionCable::SubscriptionAdapter::Message.new(payload:, id: channel_id)
   end
 end

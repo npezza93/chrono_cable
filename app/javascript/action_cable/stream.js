@@ -7,36 +7,8 @@ export default class Stream {
     this.queue = []
   }
 
-  increment(id) {
-    this.id = id
-  }
-
-  messageWasProcessed(id) {
-    return this.id != null && id <= this.id
-  }
-
-  messageIsProcessable(id) {
-    return this.id == null || id === this.id + 1
-  }
-
   isBehind(id) {
     return this.id != null && this.id < id
-  }
-
-  jumpToEarliestAvailableId(earliestId) {
-    if (this.id != null && earliestId != null && earliestId > this.id + 1) {
-      this.id = earliestId - 1
-    }
-  }
-
-  skipMissingIdsBefore(id) {
-    if (this.isBehind(id) && !this.messageIsProcessable(id)) {
-      this.id = id - 1
-    }
-  }
-
-  caughtUp() {
-    this.recovering = false
   }
 
   recover(subscriptions, id, message) {
@@ -58,29 +30,30 @@ export default class Stream {
   }
 
   processMessage(id, payload, callback) {
-    if (this.messageWasProcessed(id)) return true
+    if (this.id != null && id <= this.id) return true
 
-    if (this.messageIsProcessable(id)) {
-      this.increment(id)
+    if (this.id == null || id === this.id + 1) {
+      this.id = id
       callback(payload)
       return true
-    } else {
-      return false
     }
+
+    return false
   }
 
-  processMessages(messages, callback, earliestId) {
-    this.jumpToEarliestAvailableId(earliestId)
+  processMessages(messages, callback) {
+    const history = messages.map(({ id, payload }) => ({ id, message: JSON.parse(payload) }))
+    this.queue = history.concat(this.queue)
 
-    messages
-      .sort((a, b) => a.id - b.id)
-      .forEach(({ id, payload }) => {
-        this.skipMissingIdsBefore(id)
-        this.processMessage(id, JSON.parse(payload), callback)
-      })
+    this.queue.sort((a, b) => a.id - b.id).forEach(({ id, message }) => {
+      if (this.id == null || id > this.id) {
+        this.id = id
+        callback(message)
+      }
+    })
 
-    this.caughtUp()
-    this.processQueue(callback)
+    this.queue = []
+    this.recovering = false
 
     return this.subscription
   }

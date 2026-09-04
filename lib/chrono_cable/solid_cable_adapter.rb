@@ -5,15 +5,12 @@ module ChronoCable::SolidCableAdapter
 
   def history(channel, after_id: nil)
     messages = ::SolidCable::Message.
-      where(channel_hash: channel_hash_for(channel))
+      where(channel_hash: channel_hash_for(channel)).
+      where.not(channel_id: nil)
     messages = messages.where(channel_id: (after_id.to_i + 1)..) if after_id
-    messages.order(:channel_id).map do |message|
-      { id: message.channel_id, payload: message.payload }
+    messages.order(:channel_id).pluck(:channel_id, :payload).map do |id, payload|
+      { id:, payload: }
     end
-  end
-
-  def earliest_id(channel)
-    ::SolidCable::Message.where(channel_hash: channel_hash_for(channel)).minimum(:channel_id)
   end
 
   def enable_ordered_delivery(channel)
