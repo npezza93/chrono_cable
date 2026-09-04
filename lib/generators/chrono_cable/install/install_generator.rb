@@ -12,10 +12,10 @@ class ChronoCable::InstallGenerator < Rails::Generators::Base
 
   def copy_migrations
     migration_template "create_solid_cable_channels.rb",
-      "db/migrate/create_solid_cable_channels.rb"
+      "db/cable_migrate/create_solid_cable_channels.rb"
 
     migration_template "add_channel_id_to_solid_cable_messages.rb",
-      "db/migrate/add_channel_id_to_solid_cable_messages.rb"
+      "db/cable_migrate/add_channel_id_to_solid_cable_messages.rb"
   end
 
   def update_importmap

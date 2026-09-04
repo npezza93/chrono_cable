@@ -14,10 +14,10 @@ module ChronoCable
 
       run_generator
 
-      assert_migration "db/migrate/create_solid_cable_channels.rb" do |migration|
+      assert_migration "db/cable_migrate/create_solid_cable_channels.rb" do |migration|
         assert_match "create_table :solid_cable_channels", migration
       end
-      assert_migration "db/migrate/add_channel_id_to_solid_cable_messages.rb" do |migration|
+      assert_migration "db/cable_migrate/add_channel_id_to_solid_cable_messages.rb" do |migration|
         assert_match "add_column :solid_cable_messages, :channel_id", migration
       end
       assert_file "config/importmap.rb",
