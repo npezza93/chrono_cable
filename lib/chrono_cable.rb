@@ -15,6 +15,10 @@ require "chrono_cable/solid_cable_adapter"
 require "chrono_cable/solid_cable_broadcasting"
 
 module ChronoCable
+  def self.signed_stream_verifier
+    Rails.application.message_verifier("chrono_cable/stream_name")
+  end
+
   def self.install!
     ::ActionCable::INTERNAL[:message_types][:history] = "history"
 

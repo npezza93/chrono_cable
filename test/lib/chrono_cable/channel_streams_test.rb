@@ -75,7 +75,7 @@ class ChronoCable::ChannelStreamsTest < ActiveSupport::TestCase
     assert_equal({
       identifier: identifier,
       type: ActionCable::INTERNAL[:message_types][:confirmation],
-      ids: { "messages" => 6 }
+      ids: { signed_stream_name("messages") => 6 }
     }, connection.transmissions.last)
     connection.transmissions.clear
 
@@ -87,7 +87,7 @@ class ChronoCable::ChannelStreamsTest < ActiveSupport::TestCase
     assert_equal({
       identifier: identifier,
       message: { "body" => "hello" },
-      broadcasting: "messages",
+      broadcasting: signed_stream_name("messages"),
       id: 7
     }, connection.transmissions.last)
   end
@@ -123,7 +123,7 @@ class ChronoCable::ChannelStreamsTest < ActiveSupport::TestCase
     assert_equal [ [ "messages", 3 ] ], pubsub.history_requests
     assert_equal({
       identifier: identifier,
-      broadcasting: "messages",
+      broadcasting: signed_stream_name("messages"),
       type: ActionCable::INTERNAL[:message_types][:history],
       message: {
         messages: [ { id: 4, payload: "next" } ]
@@ -140,6 +140,32 @@ class ChronoCable::ChannelStreamsTest < ActiveSupport::TestCase
 
     assert_empty connection.transmissions
     assert_equal [ [ "messages", 3 ] ], pubsub.history_requests
+  end
+
+  test "rejects unsigned, tampered, missing, and malformed stream names" do
+    _channel, connection, pubsub, subscriptions = subscribe
+    connection.transmissions.clear
+    token = signed_stream_name("messages")
+
+    [ "messages", token + "tampered", nil, 123, [], {} ].each do |broadcasting|
+      request_history subscriptions, broadcasting, 0, signed: false
+    end
+
+    assert_empty pubsub.history_requests
+    assert_empty connection.transmissions
+  end
+
+  test "replays history using the signed name from the confirmation" do
+    _channel, connection, pubsub, subscriptions = subscribe(ids: { "messages" => 3 })
+    token = connection.transmissions.last.fetch(:ids).keys.sole
+    assert_not_equal "messages", token
+    assert_equal "messages", ChronoCable.signed_stream_verifier.verified(token)
+    connection.transmissions.clear
+
+    request_history subscriptions, token, 3, signed: false
+
+    assert_equal [ [ "messages", 3 ] ], pubsub.history_requests
+    assert_equal token, connection.transmissions.last.fetch(:broadcasting)
   end
 
   test "custom stream callbacks receive live and historical payloads" do
@@ -165,7 +191,7 @@ class ChronoCable::ChannelStreamsTest < ActiveSupport::TestCase
     assert_equal [ [ "custom", 9 ] ], pubsub.history_requests
     assert_equal({
       identifier: identifier,
-      broadcasting: "custom",
+      broadcasting: signed_stream_name("custom"),
       type: ActionCable::INTERNAL[:message_types][:history],
       message: { messages: [] }
     }, connection.transmissions.last)
@@ -179,7 +205,7 @@ class ChronoCable::ChannelStreamsTest < ActiveSupport::TestCase
 
     assert_equal({
       identifier: identifier,
-      broadcasting: "later",
+      broadcasting: signed_stream_name("later"),
       type: ActionCable::INTERNAL[:message_types][:history],
       message: { messages: [], id: 8 }
     }, connection.transmissions.last)
@@ -208,9 +234,14 @@ class ChronoCable::ChannelStreamsTest < ActiveSupport::TestCase
       [ Channel.subscriber, connection, pubsub, subscriptions ]
     end
 
-    def request_history(subscriptions, broadcasting, id)
+    def request_history(subscriptions, broadcasting, id, signed: true)
+      broadcasting = signed_stream_name(broadcasting) if signed
       subscriptions.execute_command \
         "command" => "history", "identifier" => identifier, "broadcasting" => broadcasting, "id" => id
+    end
+
+    def signed_stream_name(broadcasting)
+      ChronoCable.signed_stream_verifier.generate(broadcasting)
     end
 
     def identifier

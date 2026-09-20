@@ -82,14 +82,14 @@ module ChronoCable::ChannelStreams
       return if id.nil?
 
       @subscription_confirmation_ids ||= {}
-      @subscription_confirmation_ids[broadcasting] = id
+      @subscription_confirmation_ids[ChronoCable.signed_stream_verifier.generate(broadcasting)] = id
     end
 
     def __history(data = nil)
-      broadcasting = data.to_h["broadcasting"]
-      return unless broadcasting
+      signed_broadcasting = data.to_h["broadcasting"]
+      return unless signed_broadcasting.is_a?(String)
 
-      broadcasting = String(broadcasting)
+      broadcasting = ChronoCable.signed_stream_verifier.verified(signed_broadcasting)
       return unless ordered_stream?(broadcasting)
 
       messages = pubsub.history(broadcasting, after_id: data["id"])
@@ -113,6 +113,7 @@ module ChronoCable::ChannelStreams
 
     def transmit_history(messages, broadcasting:, id: nil)
       message = { messages:, id: }.compact
+      broadcasting = ChronoCable.signed_stream_verifier.generate(broadcasting)
 
       connection.transmit identifier: @identifier, broadcasting:,
         type: ActionCable::INTERNAL[:message_types][:history], message: message

@@ -9,6 +9,7 @@ module ChronoCable::ChannelBase
 
       payload = { channel_class: self.class.name, data: data, via: via }
       ActiveSupport::Notifications.instrument("transmit.action_cable", payload) do
+        broadcasting = ChronoCable.signed_stream_verifier.generate(broadcasting) if broadcasting
         connection.transmit **{ identifier: @identifier, message: data, broadcasting:, id: }.compact
       end
     end
