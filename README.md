@@ -18,9 +18,9 @@ bin/rails generate chrono_cable:install
 bin/rails db:prepare
 ```
 
-The generator adds sequence storage and, in importmap apps, replaces the Action Cable and Turbo pins with ChronoCable's browser bundles. Deploy the migration before the application code.
+The generator adds sequence storage and, in importmap apps, replaces the Action Cable and Turbo pins with ChronoCable's browser bundles.
 
-If you maintain your importmap manually, use:
+Your importmap should look like:
 
 ```ruby
 pin "@rails/actioncable", to: "chronocable.js"
@@ -56,10 +56,6 @@ end
 ```
 
 Historical messages are passed through the callback. The callback is responsible for transmitting them when appropriate.
-
-## Limitations
-
-- Replay is limited by Solid Cable's retention window, and history responses are not paginated.
 
 ## Development
 
